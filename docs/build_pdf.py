@@ -9,7 +9,7 @@ from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph, Prefo
 from PIL import Image as PILImage
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-OUT = ROOT / "Backend_YourName_Assignment.pdf"
+OUT = ROOT / "Backend_Tadi.Sangeetha_Assignment.pdf"
 SHOTS = ROOT / "docs" / "screenshots"
 NAVY, TEAL, GREY = colors.HexColor("#0b1f3a"), colors.HexColor("#0ea5a4"), colors.HexColor("#6b7a90")
 
@@ -94,7 +94,7 @@ S = []
 S += [Spacer(1, 40 * mm), P("UIDAI Sandbox", ParagraphStyle("t0", parent=H1, fontSize=14, textColor=TEAL)),
       P("Fraud Risk Scoring Pipeline", ParagraphStyle("t1", parent=H1, fontSize=30, leading=34)),
       P("Backend Technical Assignment – Implementation Report", ParagraphStyle("t2", parent=B, fontSize=13, textColor=GREY)), Spacer(1, 16 * mm),
-      table([["Candidate", "YourName  (replace before submitting)"], ["GitHub repository", "&lt;paste your public repository URL here&gt;  – the repo is prepared (README, .gitignore, .env.example, tests) but has not been pushed by the assistant"],
+      table([["Candidate", "Tadi Sangeetha"], ["GitHub repository", "https://github.com/sangeethaReddy555/uidai-fraud-risk-pipeline"],
              ["Stack", "Python FastAPI · SQLAlchemy · Alembic · PyJWT · Kafka (mock + adapter) · React (Vite)"],
              ["Data", "Fake/test Aadhaar numbers only. No connection to UIDAI or real Aadhaar data."]], [40 * mm, 125 * mm], header=False),
       Spacer(1, 10 * mm),
@@ -223,5 +223,5 @@ def footer(c, d):
 
 
 SimpleDocTemplate(str(OUT), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=18 * mm,
-                  title="Backend Assignment – Fraud Risk Scoring Pipeline", author="YourName").build(S, onFirstPage=footer, onLaterPages=footer)
+                  title="Backend Assignment – Fraud Risk Scoring Pipeline", author="Tadi Sangeetha").build(S, onFirstPage=footer, onLaterPages=footer)
 print("wrote", OUT)
