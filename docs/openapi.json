@@ -1,0 +1,887 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "UIDAI Sandbox \u2013 Fraud Risk Scoring API",
+    "description": "\n**UIDAI Sandbox \u2013 Fraud Risk Scoring Pipeline** (assignment project).\n\n* Uses **fake/test Aadhaar numbers only**. Never connects to UIDAI or any real Aadhaar system.\n* All endpoints need `Authorization: Bearer <JWT>`. In development, `GET /api/v1/dev/tokens` returns sample\n  tokens for Partner A, Partner B and an unauthorized user (**not production credentials**).\n* Errors: `401` unauthenticated, `403` forbidden (scope / partner mismatch), `404` not found or not owned,\n  `422` validation, `429` rate limited, `503` event bus down.\n",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Liveness probe",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk-score/initiate": {
+      "post": {
+        "tags": [
+          "Risk Score"
+        ],
+        "summary": "Initiate a risk-score evaluation",
+        "description": "Requires Bearer JWT with scope `write:risk_test`. The Aadhaar number (test data only) is masked before storage and is never logged or returned. Publishes a `Risk_Evaluation_Requested` event.",
+        "operationId": "initiate_api_v1_risk_score_initiate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{8,100}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitiateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitiateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token valid but lacks required scope / partner binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error (input values are never echoed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Event bus unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk-score/audit/{transaction_id}": {
+      "get": {
+        "tags": [
+          "Risk Score"
+        ],
+        "summary": "Audit a transaction (owner only)",
+        "description": "Requires scope `read:risk_test`. The partner is taken from the token, never from the request. A transaction owned by another partner is indistinguishable from one that does not exist (404).",
+        "operationId": "audit_api_v1_risk_score_audit__transaction_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "transaction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{6,40}$",
+              "title": "Transaction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token valid but lacks required scope / partner binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or not owned by caller)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk-score/transactions": {
+      "get": {
+        "tags": [
+          "Risk Score"
+        ],
+        "summary": "List the caller's transactions",
+        "operationId": "list_transactions_api_v1_risk_score_transactions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "PENDING",
+                    "COMPLETED",
+                    "FAILED"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "PENDING includes PROCESSING",
+              "title": "Status"
+            },
+            "description": "PENDING includes PROCESSING"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[A-Za-z0-9_-]*$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token valid but lacks required scope / partner binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk-score/stats": {
+      "get": {
+        "tags": [
+          "Risk Score"
+        ],
+        "summary": "Dashboard counters for the caller's transactions",
+        "operationId": "get_stats_api_v1_risk_score_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token valid but lacks required scope / partner binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/dev/tokens": {
+      "get": {
+        "tags": [
+          "Development only"
+        ],
+        "summary": "Sample development tokens (NOT production credentials)",
+        "operationId": "dev_tokens_api_v1_dev_tokens_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dev/callback-sink": {
+      "post": {
+        "tags": [
+          "Development only"
+        ],
+        "summary": "Fake partner callback receiver",
+        "operationId": "callback_sink_api_v1_dev_callback_sink_post",
+        "parameters": [
+          {
+            "name": "fail_first",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 0,
+              "default": 0,
+              "title": "Fail First"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuditResponse": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "title": "Transaction Id"
+          },
+          "partner_id": {
+            "type": "string",
+            "title": "Partner Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PROCESSING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "title": "Status"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Score"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "partner_id",
+          "status",
+          "risk_score",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AuditResponse",
+        "example": {
+          "created_at": "2026-11-23T10:00:00Z",
+          "partner_id": "PARTNER001",
+          "risk_score": 75,
+          "status": "COMPLETED",
+          "transaction_id": "TXN3F9A1C77D2E04B5A91C8",
+          "updated_at": "2026-11-23T10:00:02Z"
+        }
+      },
+      "DeviceData": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{3,64}$",
+            "title": "Device Id",
+            "examples": [
+              "DEVICE001"
+            ]
+          },
+          "os": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Os"
+          },
+          "app_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "device_id"
+        ],
+        "title": "DeviceData"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InitiateRequest": {
+        "properties": {
+          "partner_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{3,64}$",
+            "title": "Partner Id"
+          },
+          "aadhaar_number": {
+            "type": "string",
+            "format": "password",
+            "title": "Aadhaar Number",
+            "description": "12-digit Aadhaar number (fake/test data only)",
+            "writeOnly": true
+          },
+          "device_data": {
+            "$ref": "#/components/schemas/DeviceData"
+          },
+          "callback_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 8,
+            "title": "Callback Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "partner_id",
+          "aadhaar_number",
+          "device_data",
+          "callback_url"
+        ],
+        "title": "InitiateRequest",
+        "example": {
+          "aadhaar_number": "123456789012",
+          "callback_url": "https://example.com/callback",
+          "device_data": {
+            "device_id": "DEVICE001"
+          },
+          "partner_id": "PARTNER001"
+        }
+      },
+      "InitiateResponse": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "title": "Transaction Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PROCESSING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "Risk evaluation requested"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "status"
+        ],
+        "title": "InitiateResponse",
+        "example": {
+          "message": "Risk evaluation requested",
+          "status": "PENDING",
+          "transaction_id": "TXN3F9A1C77D2E04B5A91C8"
+        }
+      },
+      "StatsResponse": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "average_risk_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Risk Score"
+          },
+          "risk_buckets": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Risk Buckets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "pending",
+          "completed",
+          "failed",
+          "average_risk_score",
+          "risk_buckets"
+        ],
+        "title": "StatsResponse"
+      },
+      "TransactionItem": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "title": "Transaction Id"
+          },
+          "partner_id": {
+            "type": "string",
+            "title": "Partner Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PROCESSING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "title": "Status"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Score"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "masked_aadhaar_number": {
+            "type": "string",
+            "title": "Masked Aadhaar Number"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "partner_id",
+          "status",
+          "risk_score",
+          "created_at",
+          "updated_at",
+          "masked_aadhaar_number"
+        ],
+        "title": "TransactionItem",
+        "example": {
+          "created_at": "2026-11-23T10:00:00Z",
+          "partner_id": "PARTNER001",
+          "risk_score": 75,
+          "status": "COMPLETED",
+          "transaction_id": "TXN3F9A1C77D2E04B5A91C8",
+          "updated_at": "2026-11-23T10:00:02Z"
+        }
+      },
+      "TransactionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TransactionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "TransactionList"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "JWT Bearer token",
+        "scheme": "bearer"
+      }
+    }
+  }
+}
